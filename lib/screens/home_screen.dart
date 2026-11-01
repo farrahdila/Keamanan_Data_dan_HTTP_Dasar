@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../services/secure_storage_service.dart';
+import 'login_screen.dart';
 import 'user_list_screen.dart';
+import 'post_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   final SecureStorageService _storageService = SecureStorageService();
+
   final TextEditingController _tokenController = TextEditingController();
-  String? _savedToken;
+
   bool _hasToken = false;
+  bool _isCheckingToken = true;
+
   @override
   void initState() {
     super.initState();
@@ -26,15 +32,19 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  // Memeriksa status token
   Future<void> _checkToken() async {
     final hasToken = await _storageService.hasToken();
-    final token = await _storageService.getToken();
+
+    if (!mounted) return;
+
     setState(() {
       _hasToken = hasToken;
-      _savedToken = token;
+      _isCheckingToken = false;
     });
   }
 
+  // Menyimpan token secara manual seperti kode awal
   Future<void> _saveToken() async {
     if (_tokenController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -45,30 +55,91 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       return;
     }
+
     await _storageService.saveToken(_tokenController.text.trim());
+
     _tokenController.clear();
+
     await _checkToken();
-    if (mounted) {
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Token berhasil disimpan di secure storage'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  // Menghapus token secara manual
+  Future<void> _deleteToken() async {
+    await _storageService.deleteToken();
+
+    await _checkToken();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Token berhasil dihapus'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  // Latihan 2: Logout dengan konfirmasi
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Logout'),
+          content: const Text('Apakah Anda yakin ingin logout?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      await _storageService.deleteToken();
+
+      if (!mounted) return;
+
+      await _checkToken();
+
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Token berhasil disimpan di secure storage'),
-          backgroundColor: Colors.green,
+          content: Text('Logout berhasil'),
+          backgroundColor: Colors.orange,
         ),
       );
     }
   }
 
-  Future<void> _deleteToken() async {
-    await _storageService.deleteToken();
+  // Membuka halaman login
+  Future<void> _openLogin() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
+
     await _checkToken();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Token berhasil dihapus'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
   }
 
   @override
@@ -78,25 +149,104 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Secure Storage & HTTP'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        actions: [
+          if (_hasToken)
+            IconButton(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout),
+              tooltip: 'Logout',
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Section 1: Secure Storage
+              // Status login
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      const Row(
                         children: [
-                          const Icon(Icons.lock, color: Colors.deepPurple),
-                          const SizedBox(width: 8),
-                          const Text(
+                          Icon(Icons.account_circle, color: Colors.deepPurple),
+                          SizedBox(width: 8),
+                          Text(
+                            'Status Login',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_isCheckingToken)
+                        const CircularProgressIndicator()
+                      else
+                        Row(
+                          children: [
+                            Icon(
+                              _hasToken ? Icons.check_circle : Icons.cancel,
+                              color: _hasToken ? Colors.green : Colors.red,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _hasToken ? 'Sudah login' : 'Belum login',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      const SizedBox(height: 12),
+                      if (!_hasToken)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _openLogin,
+                            icon: const Icon(Icons.login),
+                            label: const Text('Login'),
+                          ),
+                        )
+                      else
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _logout,
+                            icon: const Icon(Icons.logout),
+                            label: const Text('Logout'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Section 1: Secure Storage
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.lock, color: Colors.deepPurple),
+                          SizedBox(width: 8),
+                          Text(
                             'Secure Storage',
                             style: TextStyle(
                               fontSize: 18,
@@ -164,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Expanded(
                               child: Text(
                                 _hasToken
-                                    ? 'Token tersimpan: ${_savedToken!}...'
+                                    ? 'Token sudah tersimpan'
                                     : 'Belum ada token tersimpan',
                                 style: TextStyle(
                                   color: _hasToken
@@ -181,19 +331,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 16),
+
               // Section 2: HTTP Request
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      const Row(
                         children: [
-                          const Icon(Icons.cloud, color: Colors.blue),
-                          const SizedBox(width: 8),
-                          const Text(
+                          Icon(Icons.cloud, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Text(
                             'HTTP Request',
                             style: TextStyle(
                               fontSize: 18,
@@ -204,10 +356,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Ambil data dari REST API (JSONPlaceholder) menggunakan GET request.',
+                        'Ambil data dari REST API JSONPlaceholder menggunakan GET request.',
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       const SizedBox(height: 16),
+
+                      // Tombol daftar user
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -219,10 +373,34 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             );
                           },
-                          icon: const Icon(Icons.list),
+                          icon: const Icon(Icons.people),
                           label: const Text('Lihat Daftar Pengguna'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Latihan 3: Tombol daftar posts
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const PostListScreen(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.article),
+                          label: const Text('Lihat Daftar Posts'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
@@ -232,12 +410,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 16),
+
               // Section 3: Catatan Keamanan
               Card(
                 color: Colors.amber[50],
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

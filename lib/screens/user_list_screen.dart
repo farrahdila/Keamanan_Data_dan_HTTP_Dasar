@@ -6,38 +6,79 @@ import '../widgets/user_card.dart';
 
 class UserListScreen extends StatefulWidget {
   const UserListScreen({super.key});
+
   @override
   State<UserListScreen> createState() => _UserListScreenState();
 }
 
 class _UserListScreenState extends State<UserListScreen> {
   final ApiService _apiService = ApiService();
+
+  final TextEditingController _searchController = TextEditingController();
+
   List<User> _users = [];
+  List<User> _filteredUsers = [];
+
   bool _isLoading = true;
   String? _errorMessage;
+
   @override
   void initState() {
     super.initState();
     _loadUsers();
   }
 
+  // Latihan 5: Mengambil data dengan timeout 10 detik
   Future<void> _loadUsers() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+
     try {
-      final users = await _apiService.getUsers();
+      final users = await _apiService.getUsers(
+        timeout: const Duration(seconds: 10),
+      );
+
+      if (!mounted) return;
+
       setState(() {
         _users = users;
+        _filteredUsers = users;
         _isLoading = false;
       });
+
+      // Terapkan kembali pencarian jika masih ada kata kunci
+      _searchUsers(_searchController.text);
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;
       });
     }
+  }
+
+  // Latihan 4: Pencarian user
+  void _searchUsers(String keyword) {
+    final result = _users.where((user) {
+      final name = user.name.toLowerCase();
+      final email = user.email.toLowerCase();
+      final search = keyword.toLowerCase();
+
+      return name.contains(search) || email.contains(search);
+    }).toList();
+
+    setState(() {
+      _filteredUsers = result;
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -55,7 +96,32 @@ class _UserListScreenState extends State<UserListScreen> {
           ),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _searchUsers,
+              decoration: InputDecoration(
+                hintText: 'Cari nama atau email...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _searchController.clear();
+                    _searchUsers('');
+                  },
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 
@@ -73,11 +139,12 @@ class _UserListScreenState extends State<UserListScreen> {
         ),
       );
     }
+
     // Error state
     if (_errorMessage != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -104,17 +171,20 @@ class _UserListScreenState extends State<UserListScreen> {
         ),
       );
     }
+
     // Empty state
-    if (_users.isEmpty) {
-      return const Center(child: Text('Tidak ada data pengguna'));
+    if (_filteredUsers.isEmpty) {
+      return const Center(child: Text('User tidak ditemukan'));
     }
+
     // Success state
     return RefreshIndicator(
       onRefresh: _loadUsers,
       child: ListView.builder(
-        itemCount: _users.length,
+        itemCount: _filteredUsers.length,
         itemBuilder: (context, index) {
-          final user = _users[index];
+          final user = _filteredUsers[index];
+
           return UserCard(
             user: user,
             onTap: () {
@@ -126,11 +196,13 @@ class _UserListScreenState extends State<UserListScreen> {
     );
   }
 
+  // Menampilkan detail user
   void _showUserDetail(User user) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (context) => Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,6 +212,7 @@ class _UserListScreenState extends State<UserListScreen> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
+            Text('ID: ${user.id}'),
             Text('Username: ${user.username}'),
             Text('Email: ${user.email}'),
             Text('Telepon: ${user.phone}'),
